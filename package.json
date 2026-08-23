@@ -9,15 +9,18 @@
     "client"
   ],
   "scripts": {
-    "dev": "npm run dev --workspace=@rebus/server & npm run dev --workspace=@rebus/client",
-    "dev:server": "npm run dev --workspace=@rebus/server",
+    "dev": "npm run dev:server & npm run dev:client",
+    "dev:server": "npm run build && npm run dev --workspace=@rebus/server",
     "dev:client": "npm run dev --workspace=@rebus/client",
     "build": "npm run build --workspace=@rebus/client",
+    "deploy": "npm run build && npm run deploy --workspace=@rebus/server",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p server/tsconfig.json --noEmit && tsc -p client/tsconfig.json --noEmit",
     "lint": "eslint . --ext .ts,.tsx --max-warnings 0",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "node --experimental-strip-types test/e2e.mjs"
+    "test:e2e": "node --experimental-strip-types test/e2e.mjs",
+    "test:e2e:ci": "node test/with-server.mjs",
+    "ci": "npm run lint && npm run typecheck && npm test && npm run build"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7.18.0",
