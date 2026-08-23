@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Set from visualViewport so the keyboard shrinks the game instead of
+     covering it. SPEC 6.3. */
+  --app-height: 100dvh;
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-ink text-white font-sans antialiased;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@layer components {
+  .btn {
+    @apply w-full rounded-2xl px-5 py-4 text-lg font-semibold transition active:scale-[0.99];
+    min-height: 52px;
+  }
+  .btn-primary {
+    @apply btn bg-accent text-white disabled:bg-line disabled:text-muted;
+  }
+  .btn-ghost {
+    @apply btn border border-line bg-panel text-white;
+  }
+  .field {
+    @apply w-full rounded-2xl border border-line bg-panel px-4 py-4 text-lg outline-none;
+    @apply placeholder:text-muted focus:border-accent;
+    min-height: 52px;
+  }
+  .card {
+    @apply rounded-2xl border border-line bg-panel;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
