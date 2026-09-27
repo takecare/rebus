@@ -539,8 +539,9 @@ rounds 1–3 draw from difficulty 1, 4–6 from 1–2, 7+ from 2–3. Turn round
 candidate titles from the same deck and consume all three, so a candidate the giver did not
 pick cannot come back as a bank round later in the same game.
 
-The bank ships ~200 puzzles across Film, Song, TV, Book, Game, Meme, Phrase, Brand. Content
-notes for whoever writes them:
+The bank ships 220 puzzles across Film, Phrase, Song, Book, TV, Game, Food, Place,
+Fairy tale, Meme, Sport and Holiday (75 at difficulty 1, 109 at 2, 36 at 3, so every
+rung of the ramp in §5.4 has a deep pool). Content notes for whoever writes them:
 
 - **Read it aloud as a picture, not as a rebus of letters.** 🕷️👨‍🦰🕸️🏙️ is a picture.
   🅱️➕🅰️ is a crossword clue, and it is not fun on a phone.
@@ -645,7 +646,7 @@ The game is already made of emoji; the interface should not be.
 | Server | Cloudflare Worker + Durable Objects | §3.1 |
 | Rules | Plain TypeScript in `shared/`, zero deps | §3.2 |
 | Tests | Vitest (Node) for `shared/`, `wrangler dev` + a scripted two-client game for the server | Fast where it matters, real where it matters |
-| Deploy | Pages (client) + `wrangler deploy` (worker), GitHub Actions | |
+| Deploy | One Worker: `[assets]` for the client + `wrangler deploy`, GitHub Actions | Free tier, one origin, no CORS |
 
 ### 7.2 Layout
 
@@ -698,13 +699,42 @@ talks to the local worker.
 
 ### 7.4 Deploy
 
-- **Client** → Cloudflare Pages, `rebus/client`, `npm run build`, output `dist`. `VITE_WS_URL`
-  points at the deployed worker.
-- **Server** → `wrangler deploy` from `rebus/server`. Durable Object migration `v1` declares
-  the `RoomDO` class. Requires a paid Workers plan for DO SQLite storage; a room is a few KB
-  and a few thousand requests, so the cost of a game is fractions of a cent.
-- **CI** runs `lint`, `typecheck`, `test`, and both builds on every push. Deploys are manual
-  until phase 5 — a party game that breaks mid-party is worse than one that ships on Tuesday.
+One Worker serves both halves. `npm run deploy` builds the client and runs
+`wrangler deploy --config server/wrangler.toml`; there is no second deploy and no Pages
+project.
+
+- **Client** → `[assets] directory = "../client/dist"` in `server/wrangler.toml`. Requests
+  to static assets are free and unlimited, so the client never draws down the Worker
+  request budget. `not_found_handling = "single-page-application"` makes deep links work,
+  and `run_worker_first = ["/api/*"]` keeps the API and the socket upgrade from being
+  swallowed by the SPA fallback.
+- **Why not Pages** → sharing an origin with the API removes CORS and removes `VITE_WS_URL`
+  entirely (`client/src/net/socket.ts` already defaults to same-origin), and one deploy
+  cannot skew client and server apart mid-party.
+- **Server** → the same `wrangler deploy`. Durable Object migration `v1` declares `RoomDO`
+  under `new_sqlite_classes`, which is what makes this free-tier deployable: SQLite-backed
+  Durable Objects are the only kind the Workers Free plan can create, and are not billed
+  for storage there. The free plan's 100k requests/day is the real ceiling, and a game is
+  a few thousand requests.
+- **CI** runs `lint`, `typecheck`, `test` and the client build on every push and pull
+  request, then a full end-to-end game against a real Durable Object (`npm run
+  test:e2e:ci`, which boots its own worker). `main` deploys after both pass, using the
+  `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets.
+- **Note** the repo is public specifically so Actions minutes stay unmetered; the free
+  allowance for a private repo is 2,000 min/month and this pipeline would eat it.
+
+### 7.4b The answer must not ship to the phone
+
+§4.4 keeps a live answer out of every payload. The build is the same guarantee by
+another route: `shared/` is one module graph, and the client imports `CONFIG` and the
+wire types from its barrel, which also re-exports the bank. Only `sideEffects: false`
+in `shared/package.json` lets Rollup drop it, and one `import { PUZZLES }` in client
+code would put all 220 answers back in the bundle for any player to read.
+
+`npm run check:bundle` (in `npm run ci`, after the build) fails if a puzzle id, a bank
+field name or a long answer appears in the built client. It matches on ids and field
+names rather than titles alone, because a minified React bundle genuinely contains
+`return"Portal"` and hides "Up" inside `forceUpdate`.
 
 ### 7.5 Testing plan
 
@@ -749,7 +779,8 @@ What is implemented in `rebus/` right now, against the spec above:
 
 **Done (phases 0–4):** the shared rules module and the pure reducer, the matcher with
 the full normalization pipeline and the reject/prefix rules, both scoring formulas, the
-seeded deck with its difficulty ramp, redaction, the Durable Object with hibernated
+seeded deck with its difficulty ramp, the 220-puzzle bank, redaction, the Durable
+Object with hibernated
 sockets and deadline alarms, room create/join/resume, host migration, lobby → bank
 rounds → turn rounds → reveal → scoreboard → podium → rematch, and the React client for
 all of those screens with the clock-offset countdown and the reconnect banner.
@@ -761,11 +792,11 @@ through three real WebSocket clients against a real `wrangler dev` Durable Objec
 passes. The client has been driven through lobby, round, wrong guess, reveal and
 scoreboard in two concurrent headless Chromium phones.
 
-**Not done, and deliberately:** the bank is a ~55-puzzle seed rather than the 200 of
-§5.4; the emoji composer uses the in-app grid only (the hidden-input path to the OS
+**Not done, and deliberately:** the emoji composer uses the in-app grid only (the hidden-input path to the OS
 emoji keyboard in §6.3 is specified but not wired); sound, share cards, the `t()`
 localization table and the "still going…" stall recovery of §7.6 are absent; `test:e2e`
-needs a worker already running, so it is a command you run rather than something CI
-does; and no real-device pass has happened — everything in §6 has been exercised in
+still expects a worker you started, but `test:e2e:ci` boots one itself and is what CI
+runs; no deploy has been run against a real Cloudflare account yet, and no real-device
+pass has happened — everything in §6 has been exercised in
 headless Chromium at phone size and reasoned about on iOS, which is exactly the caveat
 Fragment's README carries and the reason it carries it.

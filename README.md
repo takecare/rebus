@@ -45,6 +45,36 @@ Open `http://<your-laptop-ip>:5173` on a phone on the same Wi-Fi to play for rea
 | `npm run lint` | ESLint, including the rule that keeps `shared/` runtime-agnostic |
 | `npm run build` | Production client bundle |
 | `npm run test:e2e` | Three scripted clients play a full game against a running `wrangler dev` |
+| `npm run test:e2e:ci` | The same game, but it starts and stops the worker itself |
+| `npm run check:bundle` | Fails if a puzzle answer reached the built client |
+| `npm run ci` | Everything CI runs: lint, typecheck, test, build, bundle check |
+| `npm run deploy` | Builds the client and deploys client + worker as one Worker |
+
+## Deploying
+
+The client and the API ship as a **single Cloudflare Worker**: the built client is
+served from `[assets]` in `server/wrangler.toml`, and `/api/*` is routed to the Worker
+ahead of the SPA fallback. That keeps everything on one origin, so there is no CORS and
+no `VITE_WS_URL` to configure — `client/src/net/socket.ts` already defaults to the
+origin it was served from.
+
+```bash
+npx wrangler login
+npm run deploy
+```
+
+It fits the **Workers Free plan**: static asset requests are free and unlimited, and the
+room Durable Object is declared under `new_sqlite_classes`, which is the only kind of
+Durable Object the free plan can create and is not billed for storage there. The
+practical ceiling is the free plan's 100k Worker requests/day.
+
+CI runs on GitHub Actions (`.github/workflows/ci.yml`) on every push and pull request:
+lint, typecheck, unit tests and the client build, then a full end-to-end game against a
+real Durable Object. Pushes to `main` deploy after both jobs pass, which needs two repo
+secrets, `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
+
+> This repository is public so that Actions minutes stay unmetered. Making it private
+> again puts CI back on the 2,000 min/month free allowance.
 
 ## Where the interesting parts are
 
@@ -53,5 +83,9 @@ Open `http://<your-laptop-ip>:5173` on a phone on the same Wi-Fi to play for rea
   `spider` does not win a round whose answer is `Spider-Man`.
 - `shared/src/redact.ts` — the one function allowed to produce something sendable.
   A live round's answer is not in any payload, for anyone, including players who
-  already answered.
+  already answered. `test/check-bundle.mjs` enforces the same thing at build time:
+  the 220-puzzle bank must not be readable in the client bundle either.
+- `shared/src/puzzles.data.ts` — the bank, 220 puzzles over 12 categories, gated by
+  `validatePuzzles()` and by a test that no two answers are close enough for the
+  fuzzy matcher to confuse.
 - `server/src/room.ts` — the Durable Object: hibernated sockets, one alarm, no rules.

@@ -3,6 +3,9 @@ main = "src/index.ts"
 compatibility_date = "2025-01-01"
 
 # One Durable Object per room. SPEC 3.1.
+# SQLite-backed DOs are the only kind the Workers Free plan can create, and are
+# free of storage charges there — so `new_sqlite_classes` below is what keeps
+# this deployable on the free tier. SPEC 7.4.
 [[durable_objects.bindings]]
 name = "ROOMS"
 class_name = "RoomDO"
@@ -10,6 +13,18 @@ class_name = "RoomDO"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["RoomDO"]
+
+# The built client is served by this same Worker rather than a separate Pages
+# project. Three reasons: asset requests are free and unlimited (so the client
+# never eats the Worker request budget), the client and the API share an origin
+# so there is no CORS and no VITE_WS_URL to keep in sync, and a room is one
+# `wrangler deploy` instead of two deploys that can skew apart. SPEC 7.4.
+[assets]
+directory = "../client/dist"
+# Unmatched paths serve index.html so a deep link into the SPA works...
+not_found_handling = "single-page-application"
+# ...but /api/* must reach the Worker, not the SPA fallback.
+run_worker_first = ["/api/*"]
 
 [dev]
 port = 8787
