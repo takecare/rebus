@@ -105,6 +105,26 @@ bo.send({ t: 'guess', text: 'again too fast' });
 await sleep(300);
 assert(bo.results.at(-1)?.kind === 'rate', 'a second guess inside the cooldown is rate-limited');
 
+// A ping now also re-runs the room's deadline check, so that a room whose alarm was
+// missed can be nudged back to life (SPEC 7.6). The risk that buys is the opposite
+// one: the ordinary 20-second keepalive must not push a live round along. Three
+// pings mid-round, from every phone, must change nothing.
+{
+  const phase = ana.state.phase;
+  const roundNo = ana.state.roundNo;
+  const deadline = ana.state.deadline;
+  const scores = ana.state.players.map((p) => p.score);
+  for (const p of players) p.send({ t: 'ping', t0: Date.now() });
+  await sleep(600);
+  assert(ana.state.phase === phase, 'a ping mid-round does not change the phase');
+  assert(ana.state.roundNo === roundNo, 'a ping mid-round does not advance the round');
+  assert(ana.state.deadline === deadline, 'a ping mid-round does not move the deadline');
+  assert(
+    ana.state.players.every((p, i) => p.score === scores[i]),
+    'a ping mid-round does not touch the scores',
+  );
+}
+
 let sharedTitle = null;
 let rounds = 0;
 let sawTurnRound = false;

@@ -88,7 +88,15 @@ export class RoomDO implements DurableObject {
     }
 
     if (msg.t === 'ping') {
-      return this.sendTo(ws, { t: 'pong', t0: msg.t0, serverTime: Date.now() });
+      this.sendTo(ws, { t: 'pong', t0: msg.t0, serverTime: Date.now() });
+      // A ping also re-runs the deadline check, which is how a room recovers from
+      // an alarm that never fired: the client notices the deadline went by, pings,
+      // and that wakes this object. SPEC §7.6. `tick` is guarded by the deadline
+      // in the reducer, so nudging early or often is a no-op rather than a skip.
+      if (this.game.deadline !== null && Date.now() >= this.game.deadline) {
+        await this.dispatch({ type: 'tick' });
+      }
+      return;
     }
 
     // join/resume are the only messages that can create the socket's identity.
