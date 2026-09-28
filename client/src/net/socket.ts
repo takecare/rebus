@@ -102,11 +102,19 @@ class RoomSocket {
     useStore.getState().reset();
   }
 
+  /**
+   * Ask the room to re-check its own deadline, for when its alarm was missed.
+   * This is a plain ping on purpose: the server already wakes on one, and reusing
+   * it means a stalled room recovers without a new message type. SPEC §7.6.
+   */
+  nudge(): void {
+    this.send({ t: 'ping', t0: Date.now() });
+  }
+
   private startPings(): void {
     this.stopPings();
-    const ping = () => this.send({ t: 'ping', t0: Date.now() });
-    ping();
-    this.pingTimer = window.setInterval(ping, 20_000);
+    this.nudge();
+    this.pingTimer = window.setInterval(() => this.nudge(), 20_000);
   }
 
   private stopPings(): void {

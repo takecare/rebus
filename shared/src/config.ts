@@ -30,6 +30,14 @@ export const CONFIG = {
   DISCONNECT_GRACE_MS: 45_000,
   ROOM_IDLE_MS: 30 * 60_000,
 
+  /**
+   * A deadline this far past with nothing new from the server means the alarm
+   * behind it was missed. The client then says so and nudges the room. SPEC §7.6.
+   */
+  STALL_AFTER_MS: 10_000,
+  /** How often a client re-nudges a room it believes is stalled. */
+  STALL_NUDGE_MS: 3_000,
+
   NICK_MAX_CHARS: 12,
   CLUE_MIN_EMOJI: 1,
   CLUE_MAX_EMOJI: 8,

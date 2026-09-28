@@ -4,6 +4,9 @@ A real-time multiplayer party game for phones. The server shows a string of emoj
 everyone races to type what it means. Every third round, one of the players writes
 the emoji instead.
 
+**Play it: https://rebus.rui-b69.workers.dev** — open it on a phone, make a room,
+share the code.
+
 See [`SPEC.md`](./SPEC.md) for the design document this implementation follows, and
 its §8 for what is and is not built yet.
 
@@ -62,6 +65,9 @@ origin it was served from.
 npx wrangler login
 npm run deploy
 ```
+
+Pushes to `main` deploy themselves, so this is only for the first deploy or a
+manual one. The live worker is **https://rebus.rui-b69.workers.dev**.
 
 It fits the **Workers Free plan**: static asset requests are free and unlimited, and the
 room Durable Object is declared under `new_sqlite_classes`, which is the only kind of

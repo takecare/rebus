@@ -755,7 +755,7 @@ names rather than titles alone, because a minified React bundle genuinely contai
 | Emoji render differently across phones and a puzzle becomes unguessable | Content rule §5.4; a `renderRisk` flag on puzzles known to differ |
 | Fuzzy matcher accepts a wrong answer | Reject lists, must-fail rows in the test table, `close` as the safety valve |
 | DO hibernation loses in-flight state | State is persisted after every mutating event; in-memory is only a cache |
-| A round stalls because an alarm did not fire | Client shows a "still going…" state after deadline + 10 s and sends a `ping`, which wakes the DO and re-runs the deadline check |
+| A round stalls because an alarm did not fire | **Built.** After `STALL_AFTER_MS` past the deadline the client shows "Still going…" and pings every `STALL_NUDGE_MS`; the DO answers a ping whose deadline has passed with a `tick`, re-running its own deadline check. `tick` is deadline-guarded in the reducer, so a nudge is a no-op rather than a skip, and several phones nudging at once cannot double-advance. `test/stall.test.ts` |
 | Player-authored clues are garbage | Giver scores 0 when nobody guesses; three-title choice removes "I don't know this one" |
 | The bank runs dry for a regular group | Turn rounds; and the deck is per-game shuffled, so repeats are spread |
 | Cost blowup from idle rooms | Hibernation + `ROOM_IDLE_MS` self-delete |
@@ -779,8 +779,8 @@ What is implemented in `rebus/` right now, against the spec above:
 
 **Done (phases 0–4):** the shared rules module and the pure reducer, the matcher with
 the full normalization pipeline and the reject/prefix rules, both scoring formulas, the
-seeded deck with its difficulty ramp, the 220-puzzle bank, redaction, the Durable
-Object with hibernated
+seeded deck with its difficulty ramp, the 220-puzzle bank, redaction, the
+stall recovery of §7.6, the Durable Object with hibernated
 sockets and deadline alarms, room create/join/resume, host migration, lobby → bank
 rounds → turn rounds → reveal → scoreboard → podium → rematch, and the React client for
 all of those screens with the clock-offset countdown and the reconnect banner.
@@ -790,13 +790,14 @@ nine-round four-player game and the redaction property test of §4.4. `npm run t
 plays a full five-round game — turn round, mid-game reconnect, rematch included —
 through three real WebSocket clients against a real `wrangler dev` Durable Object, and
 passes. The client has been driven through lobby, round, wrong guess, reveal and
-scoreboard in two concurrent headless Chromium phones.
+scoreboard in two concurrent headless Chromium phones. It is deployed at
+`https://rebus.rui-b69.workers.dev`, and the same five-round game has been played
+against that deployment over real WebSockets.
 
 **Not done, and deliberately:** the emoji composer uses the in-app grid only (the hidden-input path to the OS
 emoji keyboard in §6.3 is specified but not wired); sound, share cards, the `t()`
-localization table and the "still going…" stall recovery of §7.6 are absent; `test:e2e`
+localization table are absent; `test:e2e`
 still expects a worker you started, but `test:e2e:ci` boots one itself and is what CI
-runs; no deploy has been run against a real Cloudflare account yet, and no real-device
-pass has happened — everything in §6 has been exercised in
+runs; and no real-device pass has happened — everything in §6 has been exercised in
 headless Chromium at phone size and reasoned about on iOS, which is exactly the caveat
 Fragment's README carries and the reason it carries it.
