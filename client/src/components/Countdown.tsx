@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
 import { serverNow } from '../state/store.js';
 
-/** Renders the server's deadline against our clock offset. SPEC 3.4. */
+/**
+ * Renders the server's deadline against our clock offset. SPEC 3.4.
+ *
+ * The number is always on: a party game is loud, and a glance has to answer
+ * "how long do I have" without reading a bar's length. The last 10 seconds
+ * still get the bar's own warn color, for the phone that's face-down on the table.
+ */
 export function Countdown({ deadline, totalMs }: { deadline: number | null; totalMs: number }) {
   const [remaining, setRemaining] = useState(() => remainingFrom(deadline));
 
@@ -29,11 +35,11 @@ export function Countdown({ deadline, totalMs }: { deadline: number | null; tota
           style={{ width: `${fraction * 100}%`, transition: 'width 120ms linear' }}
         />
       </div>
-      {urgent && (
-        <span className="w-8 text-right text-sm font-semibold tabular-nums text-warn">
-          {Math.max(0, seconds)}
-        </span>
-      )}
+      <span
+        className={`w-8 text-right text-sm font-semibold tabular-nums ${urgent ? 'text-warn' : 'text-muted'}`}
+      >
+        {Math.max(0, seconds)}
+      </span>
     </div>
   );
 }
