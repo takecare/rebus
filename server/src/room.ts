@@ -260,6 +260,9 @@ function toEvent(msg: ClientMsg, playerId: string): GameEvent | null {
       return { type: 'skipReveal', playerId };
     case 'rematch':
       return { type: 'rematch', playerId };
+    // A fresh id, minted the same way join's is — the reducer never generates one itself.
+    case 'addBot':
+      return { type: 'addBot', playerId, botId: crypto.randomUUID() };
     default:
       return null;
   }

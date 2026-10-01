@@ -697,6 +697,35 @@ npm run lint
 `0.0.0.0`, so a phone on the same Wi-Fi can hit `http://<laptop-ip>:5173` and the client
 talks to the local worker.
 
+### 7.3b Practice rooms (no second phone)
+
+`/single` is a one-player path through the real game: it creates a room, joins as you,
+then adds `CONFIG.BOT_COUNT` scripted players (`addBot`, host-only, lobby-only) so
+`MIN_PLAYERS_FOR_TURN_ROUND` is met without anyone else. From the Lobby on, it is the
+ordinary multiplayer room — same screens, same socket, same reducer — not a separate
+code path to keep in sync.
+
+A bot is a `PlayerState` with `isBot: true` and no socket of its own; it never receives
+a redacted view and acts straight out of the reducer's own true state, the same trusted
+context the rules already run in, so there is no answer to leak. Its moves are queued as
+`RoundState.botActions` — timestamps `onTick` already consumes the same way it consumes
+a deadline — each with its own margin clear of the round's real clock, so a scripted
+action is a courtesy, never a race with the real one:
+
+- **Guessing.** Every eligible bot guesser gets its own, independent chance
+  (`BOT_GUESS_CHANCE`) of ever locking in a guess at all, at a random moment in the
+  window — so a round can end early once every bot (and you) have answered, or run the
+  full clock if nobody did, same as any human.
+- **Giving.** A bot giver always completes its turn: it picks the first candidate, then
+  composes with that puzzle's own canonical emoji from the bank, rather than inventing
+  one. The usual deadline fallback (auto-pick, then abandon to a bank round) still backs
+  this up if anything goes wrong.
+
+A bot never disconnects, so a room's "nobody is here" check (`sweep`, `nextAlarm`) asks
+specifically whether a *human* is still connected — otherwise a practice room abandoned
+after one person's visit would sit in storage, kept "alive" by its own bots, until
+`ROOM_IDLE_MS` could never actually arrive.
+
 ### 7.4 Deploy
 
 One Worker serves both halves. `npm run deploy` builds the client and runs

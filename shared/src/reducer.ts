@@ -99,6 +99,9 @@ export function applyEvent(state: GameState, event: GameEvent, ctx: EventCtx): R
     case 'rematch':
       onRematch(s, event, ctx, fx);
       break;
+    case 'addBot':
+      onAddBot(s, event, ctx, fx);
+      break;
     case 'tick':
       onTick(s, ctx, fx);
       break;
@@ -140,12 +143,51 @@ function onJoin(
     firstCorrectAt: null,
     turnsGiven: 0,
     joinedAtRound: s.roundNo,
+    isBot: false,
   };
   s.players.push(player);
   if (!s.hostId) s.hostId = player.id;
   if (s.round) s.round.guesses[player.id] = { count: 0, lastGuessAt: 0, locked: false };
 
   fx.push({ kind: 'send', to: '*', msg: { t: 'event', kind: 'playerJoined', playerId: player.id, nick: player.nick } });
+  fx.push({ kind: 'state' });
+}
+
+/**
+ * A scripted player (SPEC §7.3b, the /single practice page). Host-only and
+ * lobby-only: a bot joining mid-game would need retrofitting into an
+ * in-progress round the same way a late human join already is, and the
+ * practice page never needs that, so this stays the simpler, narrower thing.
+ */
+function onAddBot(
+  s: GameState,
+  e: Extract<GameEvent, { type: 'addBot' }>,
+  ctx: EventCtx,
+  fx: Effect[],
+): void {
+  if (!requireHost(s, e.playerId, fx)) return;
+  if (s.phase !== 'lobby') return fail(fx, e.playerId, 'not_now', 'Bots can only join before the game starts.');
+  if (s.players.length >= CONFIG.MAX_PLAYERS) return fail(fx, e.playerId, 'room_full', 'That room is full.');
+
+  const n = s.players.filter((p) => p.isBot).length + 1;
+  const bot: PlayerState = {
+    id: e.botId,
+    nick: dedupeNick(s, `Bot ${n}`),
+    seat: (s.players.at(-1)?.seat ?? -1) + 1,
+    score: 0,
+    connected: true,
+    joinedAt: ctx.now,
+    disconnectedAt: null,
+    // A bot never reconnects, so there is no session to protect with one.
+    resumeToken: '',
+    firstCorrectAt: null,
+    turnsGiven: 0,
+    joinedAtRound: s.roundNo,
+    isBot: true,
+  };
+  s.players.push(bot);
+
+  fx.push({ kind: 'send', to: '*', msg: { t: 'event', kind: 'playerJoined', playerId: bot.id, nick: bot.nick } });
   fx.push({ kind: 'state' });
 }
 
@@ -235,6 +277,9 @@ function startRound(s: GameState, ctx: EventCtx, roundNo: number, fx: Effect[]):
   s.round = isTurn ? turnRound(s, ctx) : bankRound(s, ctx, roundNo);
   s.deadline =
     s.round.step === 'pick' ? ctx.now + CONFIG.TURN_PICK_MS : ctx.now + CONFIG.BANK_GUESS_MS;
+  // A turn round's guessing clock does not start until a clue exists; a bank
+  // round's starts immediately, so that is the only case scheduled here.
+  if (s.round.kind === 'bank') scheduleBotGuesses(s, ctx);
   fx.push({ kind: 'state' });
 }
 
@@ -262,6 +307,7 @@ function blankRound(s: GameState, ctx: EventCtx, kind: 'bank' | 'turn'): RoundSt
     correct: [],
     guesses,
     results: null,
+    botActions: [],
   };
 }
 
@@ -285,6 +331,9 @@ function turnRound(s: GameState, ctx: EventCtx): RoundState {
     round.candidateIds.push(draw(s, ctx, s.roundNo).id);
   }
   round.guessTotalMs = CONFIG.TURN_GUESS_MS;
+  if (giver.isBot) {
+    round.botActions.push({ playerId: giver.id, at: ctx.now + botDelay(ctx, CONFIG.TURN_PICK_MS), kind: 'pick' });
+  }
   return round;
 }
 
@@ -360,6 +409,24 @@ function onGuess(
     return;
   }
 
+  g.locked = true;
+  recordCorrectGuess(s, round, p, ctx, text, fx);
+  fx.push({ kind: 'send', to: p.id, msg: { t: 'guessResult', kind: 'correct', points: round.correct.at(-1)!.points, text } });
+  fx.push({ kind: 'send', to: '*', msg: { t: 'event', kind: 'playerCorrect', playerId: p.id, position: round.correct.length - 1 } });
+  fx.push({ kind: 'state' });
+
+  if (everyoneAnswered(s)) endRound(s, ctx, fx);
+}
+
+/** The scoring and bookkeeping a correct guess always does, bot or human. */
+function recordCorrectGuess(
+  s: GameState,
+  round: RoundState,
+  p: PlayerState,
+  ctx: EventCtx,
+  guessText: string,
+  fx: Effect[],
+): void {
   const position = round.correct.length;
   const points = guessPoints({
     remainingMs: (s.deadline ?? ctx.now) - ctx.now,
@@ -367,16 +434,9 @@ function onGuess(
     position,
     hints: round.hints,
   });
-  g.locked = true;
   p.score += points;
   p.firstCorrectAt ??= ctx.now;
-  round.correct.push({ playerId: p.id, at: ctx.now, points, guess: text });
-
-  fx.push({ kind: 'send', to: p.id, msg: { t: 'guessResult', kind: 'correct', points, text } });
-  fx.push({ kind: 'send', to: '*', msg: { t: 'event', kind: 'playerCorrect', playerId: p.id, position } });
-  fx.push({ kind: 'state' });
-
-  if (everyoneAnswered(s)) endRound(s, ctx, fx);
+  round.correct.push({ playerId: p.id, at: ctx.now, points, guess: guessText });
 }
 
 function everyoneAnswered(s: GameState): boolean {
@@ -426,12 +486,27 @@ function onCompose(
   if (round.giverId !== e.playerId) return fail(fx, e.playerId, 'not_giver', "It isn't your turn.");
   const check = validateClue(e.emoji);
   if (!check.ok) return fail(fx, e.playerId, 'bad_clue', 'Use between one and eight emoji.');
+  finishCompose(s, round, e.emoji.slice(), ctx, fx);
+}
 
-  round.emoji = e.emoji.slice();
+/** A bot giver composes with the real puzzle's own emoji rather than inventing one. */
+function botCompose(s: GameState, ctx: EventCtx, playerId: string, fx: Effect[]): void {
+  const round = s.round;
+  if (!round || round.step !== 'compose' || round.giverId !== playerId) return;
+  const puzzle = puzzleById(round.puzzleId ?? '');
+  // The bank guarantees a real emoji clue per puzzle; this is reachable only
+  // if storage were corrupted, the same corner pickTitle already guards.
+  finishCompose(s, round, puzzle?.emoji.slice() ?? ['❓'], ctx, fx);
+}
+
+/** The guess clock starts the instant a clue exists, bot-composed or typed. */
+function finishCompose(s: GameState, round: RoundState, emoji: string[], ctx: EventCtx, fx: Effect[]): void {
+  round.emoji = emoji;
   round.step = 'guess';
   round.guessStartedAt = ctx.now;
   round.guessTotalMs = CONFIG.TURN_GUESS_MS;
   s.deadline = ctx.now + CONFIG.TURN_GUESS_MS;
+  scheduleBotGuesses(s, ctx);
   fx.push({ kind: 'state' });
 }
 
@@ -442,7 +517,91 @@ function abandonTurnRound(s: GameState, ctx: EventCtx, fx: Effect[]): void {
   if (giver) giver.turnsGiven = Math.max(0, giver.turnsGiven - 1);
   s.round = bankRound(s, ctx, s.roundNo);
   s.deadline = ctx.now + CONFIG.BANK_GUESS_MS;
+  scheduleBotGuesses(s, ctx);
   fx.push({ kind: 'state' });
+}
+
+/* ------------------------------------------------------------------- bots */
+
+/** Somewhere between "queued" and "the round's own deadline, with room to spare". */
+function botDelay(ctx: EventCtx, windowMs: number): number {
+  const lo = CONFIG.BOT_ACT_MIN_MS;
+  const hi = Math.max(lo, windowMs - CONFIG.BOT_ACT_MARGIN_MS);
+  return lo + ctx.rng() * (hi - lo);
+}
+
+/**
+ * Queues a correct guess for each connected bot that is eligible to guess this
+ * round — everyone except the giver — each with its own chance of ever
+ * locking one in at all, so a round is not guaranteed a full house. A bot
+ * that is not scheduled here simply never guesses, same as a human who never
+ * answers; the round's own deadline is still what ends things either way.
+ */
+function scheduleBotGuesses(s: GameState, ctx: EventCtx): void {
+  const round = s.round;
+  if (!round || round.guessStartedAt === null) return;
+  for (const p of eligibleGuessers(s)) {
+    if (!p.isBot) continue;
+    if (ctx.rng() >= CONFIG.BOT_GUESS_CHANCE) continue;
+    round.botActions.push({
+      playerId: p.id,
+      at: round.guessStartedAt + botDelay(ctx, round.guessTotalMs),
+      kind: 'guess',
+    });
+  }
+}
+
+/** A bot's guess is always right — it is scripted to test the game, not to play it. */
+function botGuess(s: GameState, ctx: EventCtx, playerId: string, fx: Effect[]): void {
+  const round = s.round;
+  const p = playerById(s, playerId);
+  if (!p || !round || s.phase !== 'round') return;
+  if (round.kind === 'turn' && round.step !== 'guess') return;
+  if (round.giverId === p.id) return;
+  const g = (round.guesses[p.id] ??= { count: 0, lastGuessAt: 0, locked: false });
+  if (g.locked) return;
+
+  g.locked = true;
+  recordCorrectGuess(s, round, p, ctx, '(bot)', fx);
+  fx.push({ kind: 'send', to: '*', msg: { t: 'event', kind: 'playerCorrect', playerId: p.id, position: round.correct.length - 1 } });
+  fx.push({ kind: 'state' });
+
+  if (everyoneAnswered(s)) endRound(s, ctx, fx);
+}
+
+/**
+ * Runs every bot action whose time has come, in the order they were queued.
+ * A 'pick' queues its own 'compose' once it lands, and a 'compose' queues
+ * guesses for whichever bots are left to guess — each step stops as soon as
+ * the round itself stops being 'round', so nothing fires into a round that
+ * has already ended.
+ */
+function runBotActions(s: GameState, ctx: EventCtx, fx: Effect[]): void {
+  for (;;) {
+    const round = s.round;
+    if (s.phase !== 'round' || !round) return;
+    const index = round.botActions.findIndex((a) => a.at <= ctx.now);
+    if (index < 0) return;
+    const action = round.botActions.splice(index, 1)[0];
+    switch (action.kind) {
+      case 'pick':
+        pickTitle(s, ctx, 0, fx);
+        if (s.round) {
+          s.round.botActions.push({
+            playerId: action.playerId,
+            at: ctx.now + botDelay(ctx, CONFIG.TURN_COMPOSE_MS),
+            kind: 'compose',
+          });
+        }
+        break;
+      case 'compose':
+        botCompose(s, ctx, action.playerId, fx);
+        break;
+      case 'guess':
+        botGuess(s, ctx, action.playerId, fx);
+        break;
+    }
+  }
 }
 
 /* --------------------------------------------------------- ends of phases */
@@ -519,6 +678,13 @@ function onTick(s: GameState, ctx: EventCtx, fx: Effect[]): void {
       }
     }
 
+    // A bot action can end the round (a guess that completes it) or move it
+    // along (a pick, a compose) before the deadline ever needs to. Either
+    // way, re-check the phase: nothing below should run against a round that
+    // bot actions already finished.
+    runBotActions(s, ctx, fx);
+    if (s.phase !== 'round' || !s.round) return;
+
     if (s.deadline !== null && ctx.now >= s.deadline) {
       if (round.step === 'pick') pickTitle(s, ctx, 0, fx);
       else if (round.step === 'compose') abandonTurnRound(s, ctx, fx);
@@ -544,9 +710,16 @@ function sweep(s: GameState, ctx: EventCtx, fx: Effect[]): void {
       fx.push({ kind: 'state' });
     }
   }
-  if (connectedPlayers(s).length === 0 && ctx.now - s.lastActivityAt >= CONFIG.ROOM_IDLE_MS) {
+  // A bot never disconnects, so "no one connected" has to mean no *human*
+  // connected — otherwise a practice room with bots in it, abandoned by the
+  // one real person who ever joined, would never be eligible to self-destruct.
+  if (!humanConnected(s) && ctx.now - s.lastActivityAt >= CONFIG.ROOM_IDLE_MS) {
     fx.push({ kind: 'destroy' });
   }
+}
+
+function humanConnected(s: GameState): boolean {
+  return connectedPlayers(s).some((p) => !p.isBot);
 }
 
 /** The single next moment the room needs to wake up. SPEC §3.3. */
@@ -557,12 +730,15 @@ export function nextAlarm(s: GameState, now: number): number | null {
     if (s.round.hints < 1) candidates.push(s.round.guessStartedAt + CONFIG.HINT_1_AT_MS);
     if (s.round.hints < 2) candidates.push(s.round.guessStartedAt + CONFIG.HINT_2_AT_MS);
   }
+  if (s.phase === 'round' && s.round) {
+    for (const a of s.round.botActions) candidates.push(a.at);
+  }
   for (const p of s.players) {
     if (!p.connected && p.disconnectedAt !== null) {
       candidates.push(p.disconnectedAt + CONFIG.DISCONNECT_GRACE_MS);
     }
   }
-  if (connectedPlayers(s).length === 0) candidates.push(s.lastActivityAt + CONFIG.ROOM_IDLE_MS);
+  if (!humanConnected(s)) candidates.push(s.lastActivityAt + CONFIG.ROOM_IDLE_MS);
   if (candidates.length === 0) return null;
   return Math.max(now + 50, Math.min(...candidates));
 }

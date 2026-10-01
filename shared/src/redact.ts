@@ -20,6 +20,7 @@ export function redact(state: GameState, viewerId: string, now: number): GameSta
       connected: p.connected,
       isHost: state.hostId === p.id,
       isGiver: round?.giverId === p.id,
+      isBot: p.isBot,
       locked: Boolean(round?.guesses[p.id]?.locked),
       roundPoints: round?.results?.find((r) => r.playerId === p.id)?.points ?? null,
     }));

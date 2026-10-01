@@ -15,6 +15,8 @@ export type GameEvent =
   | { type: 'compose'; playerId: string; emoji: string[] }
   | { type: 'skipReveal'; playerId: string }
   | { type: 'rematch'; playerId: string }
+  /** `botId` is minted by the server (room.ts), the same as a real join's id. */
+  | { type: 'addBot'; playerId: string; botId: string }
   | { type: 'tick' };
 
 export type Effect =

@@ -18,9 +18,18 @@ export type PlayerState = {
   firstCorrectAt: number | null;
   turnsGiven: number;
   joinedAtRound: number;
+  /** A scripted practice-room player (SPEC §7.3b) — never has a socket of its own. */
+  isBot: boolean;
 };
 
 export type GuessState = { count: number; lastGuessAt: number; locked: boolean };
+
+/**
+ * A bot's move, queued for a specific moment and consumed by onTick like any
+ * other deadline (SPEC §7.3b). 'pick' and 'compose' only apply when the bot is
+ * this round's giver; 'guess' is scheduled per eligible bot guesser.
+ */
+export type BotAction = { playerId: string; at: number; kind: 'pick' | 'compose' | 'guess' };
 
 export type RoundResult = {
   playerId: string;
@@ -53,6 +62,7 @@ export type RoundState = {
   correct: { playerId: string; at: number; points: number; guess: string }[];
   guesses: Record<string, GuessState>;
   results: RoundResult[] | null;
+  botActions: BotAction[];
 };
 
 export type GameState = {

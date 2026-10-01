@@ -13,7 +13,8 @@ export type ClientMsg =
   | { t: 'compose'; emoji: string[] }
   | { t: 'skipReveal' }
   | { t: 'rematch' }
-  | { t: 'ping'; t0: number };
+  | { t: 'ping'; t0: number }
+  | { t: 'addBot' };
 
 export type GuessKind = 'correct' | 'close' | 'wrong' | 'rate' | 'used' | 'locked';
 
@@ -49,6 +50,7 @@ export type PlayerView = {
   connected: boolean;
   isHost: boolean;
   isGiver: boolean;
+  isBot: boolean;
   locked: boolean;
   roundPoints: number | null;
 };
