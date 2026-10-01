@@ -42,6 +42,13 @@ export class TestRoom {
     return playerId;
   }
 
+  /** `by` must be the current host — same requireHost gate the server enforces. */
+  addBot(by: string): string {
+    const botId = `bot${++this.seq}`;
+    this.send({ type: 'addBot', playerId: by, botId });
+    return botId;
+  }
+
   guess(playerId: string, text: string): void {
     this.send({ type: 'guess', playerId, text });
   }

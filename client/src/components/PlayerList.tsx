@@ -22,6 +22,7 @@ export function PlayerList({ players, compact }: { players: PlayerView[]; compac
               {p.id === youId && <span className="text-muted"> (you)</span>}
             </span>
             {p.isHost && <Tag>host</Tag>}
+            {p.isBot && <Tag>bot</Tag>}
             {p.isGiver && <Tag>writing</Tag>}
             {p.locked && <span className="text-good" aria-label="answered">✓</span>}
             {!compact && <span className="w-14 text-right tabular-nums text-muted">{p.score}</span>}

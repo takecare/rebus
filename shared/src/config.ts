@@ -38,6 +38,20 @@ export const CONFIG = {
   /** How often a client re-nudges a room it believes is stalled. */
   STALL_NUDGE_MS: 3_000,
 
+  /**
+   * Practice-room bots (SPEC §7.3b, the /single page). A scripted player never
+   * holds a socket and never sees a redacted view — it acts straight out of
+   * the reducer's own, un-redacted state, the same trusted context the real
+   * rules already run in.
+   */
+  BOT_COUNT: 2,
+  /** Each bot's independent chance of ever locking in a guess this round. */
+  BOT_GUESS_CHANCE: 0.7,
+  /** A scripted action always lands at least this long after it is queued... */
+  BOT_ACT_MIN_MS: 2_000,
+  /** ...and at least this clear of the round's own deadline, as a margin. */
+  BOT_ACT_MARGIN_MS: 2_000,
+
   NICK_MAX_CHARS: 12,
   CLUE_MIN_EMOJI: 1,
   CLUE_MAX_EMOJI: 8,
