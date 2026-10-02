@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { CODE_LENGTH, normalizeCode } from '@rebus/shared';
+import { CODE_LENGTH, CONFIG, normalizeCode } from '@rebus/shared';
 import { socket } from '../net/socket.js';
 import { useStore } from '../state/store.js';
 
 export function Home() {
   const [nick, setNick] = useState(() => localStorage.getItem('rebus:nick') ?? '');
   const [code, setCode] = useState(() => codeFromHash());
+  const [rounds, setRounds] = useState(() => storedRounds());
   const [busy, setBusy] = useState(false);
   const setError = useStore((s) => s.setError);
 
@@ -22,7 +23,7 @@ export function Home() {
     setBusy(true);
     try {
       remember();
-      const newCode = await socket.createRoom();
+      const newCode = await socket.createRoom(rounds);
       location.hash = `#/r/${newCode}`;
       socket.connect(newCode, nick.trim());
     } catch {
@@ -58,6 +59,24 @@ export function Home() {
           autoComplete="nickname"
           aria-label="Your name"
         />
+        <div className="flex items-center justify-center gap-2" role="group" aria-label="Number of rounds">
+          {CONFIG.ROUNDS_ALLOWED.map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => {
+                setRounds(n);
+                localStorage.setItem('rebus:rounds', String(n));
+              }}
+              aria-pressed={n === rounds}
+              className={`rounded-full border px-4 py-1.5 text-sm font-medium ${
+                n === rounds ? 'border-accent text-white' : 'border-line text-muted'
+              }`}
+            >
+              {n} rounds
+            </button>
+          ))}
+        </div>
         <button className="btn-primary" onClick={create} disabled={busy}>
           Create a room
         </button>
@@ -91,4 +110,11 @@ export function Home() {
 function codeFromHash(): string {
   const match = location.hash.match(/#\/r\/([A-Za-z0-9]+)/);
   return match ? normalizeCode(match[1]) : '';
+}
+
+/** The host's last choice, if it's still one of the valid lengths. */
+function storedRounds(): (typeof CONFIG.ROUNDS_ALLOWED)[number] {
+  const saved = Number(localStorage.getItem('rebus:rounds'));
+  const allowed: readonly number[] = CONFIG.ROUNDS_ALLOWED;
+  return allowed.includes(saved) ? (saved as (typeof CONFIG.ROUNDS_ALLOWED)[number]) : CONFIG.ROUNDS_DEFAULT;
 }
