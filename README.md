@@ -39,9 +39,9 @@ npm run dev:client     # vite on 0.0.0.0:5173, /api proxied to the worker
 Open `http://<your-laptop-ip>:5173` on a phone on the same Wi-Fi to play for real.
 `npm run dev` starts both in one shell if you prefer.
 
-Open `/single` (locally or on the deployed URL) to play alone: it creates a room, adds
-two scripted practice players, and from the Lobby on it's the real game — same screens,
-same socket. Useful for testing a change end to end without a second phone. See
+Open `/single` (locally or on the deployed URL) to play alone: pick a round count, hit
+Start practice, and it creates a room with two scripted players, same as a normal room
+from the Lobby on. Useful for testing a change end to end without a second phone. See
 [`SPEC.md` §7.3b](./SPEC.md#73b-practice-rooms-no-second-phone).
 
 ## Scripts
