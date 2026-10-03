@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { CODE_LENGTH, CONFIG, normalizeCode } from '@rebus/shared';
+import { CODE_LENGTH, normalizeCode } from '@rebus/shared';
+import { RoundsPicker, rememberRounds, storedRounds } from '../components/RoundsPicker.js';
 import { socket } from '../net/socket.js';
 import { useStore } from '../state/store.js';
 
@@ -59,24 +60,13 @@ export function Home() {
           autoComplete="nickname"
           aria-label="Your name"
         />
-        <div className="flex items-center justify-center gap-2" role="group" aria-label="Number of rounds">
-          {CONFIG.ROUNDS_ALLOWED.map((n) => (
-            <button
-              key={n}
-              type="button"
-              onClick={() => {
-                setRounds(n);
-                localStorage.setItem('rebus:rounds', String(n));
-              }}
-              aria-pressed={n === rounds}
-              className={`rounded-full border px-4 py-1.5 text-sm font-medium ${
-                n === rounds ? 'border-accent text-white' : 'border-line text-muted'
-              }`}
-            >
-              {n} rounds
-            </button>
-          ))}
-        </div>
+        <RoundsPicker
+          value={rounds}
+          onChange={(n) => {
+            setRounds(n);
+            rememberRounds(n);
+          }}
+        />
         <button className="btn-primary" onClick={create} disabled={busy}>
           Create a room
         </button>
@@ -112,9 +102,3 @@ function codeFromHash(): string {
   return match ? normalizeCode(match[1]) : '';
 }
 
-/** The host's last choice, if it's still one of the valid lengths. */
-function storedRounds(): (typeof CONFIG.ROUNDS_ALLOWED)[number] {
-  const saved = Number(localStorage.getItem('rebus:rounds'));
-  const allowed: readonly number[] = CONFIG.ROUNDS_ALLOWED;
-  return allowed.includes(saved) ? (saved as (typeof CONFIG.ROUNDS_ALLOWED)[number]) : CONFIG.ROUNDS_DEFAULT;
-}

@@ -699,11 +699,15 @@ talks to the local worker.
 
 ### 7.3b Practice rooms (no second phone)
 
-`/single` is a one-player path through the real game: it creates a room, joins as you,
-then adds `CONFIG.BOT_COUNT` scripted players (`addBot`, host-only, lobby-only) so
+`/single` is a one-player path through the real game. It shows the same rounds picker
+Home does — 5 / 9 / 15, `RoundsPicker`, shared rather than copied, after the two drifted
+out of sync once already when rounds became configurable on Home and this page quietly
+kept defaulting to 9 — then on "Start practice" it creates a room, joins as you, and adds
+`CONFIG.BOT_COUNT` scripted players (`addBot`, host-only, lobby-only) so
 `MIN_PLAYERS_FOR_TURN_ROUND` is met without anyone else. From the Lobby on, it is the
 ordinary multiplayer room — same screens, same socket, same reducer — not a separate
-code path to keep in sync.
+code path to keep in sync. The rounds choice itself is shared too: `rebus:rounds` in
+localStorage, so a pick on either screen is what the other offers next.
 
 A bot is a `PlayerState` with `isBot: true` and no socket of its own; it never receives
 a redacted view and acts straight out of the reducer's own true state, the same trusted
